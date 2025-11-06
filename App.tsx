@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { RoscaCycle, Member, RoscaMonth, PaymentStatus, RuleType, AuthUser, AppUser } from './types';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -23,11 +22,15 @@ const ADMIN_EMAIL = 'admin@gmail.com';
 const AppContent: React.FC = () => {
   const [roscaCycles, setRoscaCycles] = useState<RoscaCycle[]>([]);
   const [allUsers, setAllUsers] = useState<AppUser[]>([]);
-  const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
+  const [activeCycleId, setActiveCycleId] = useState<string | null>(
+    () => localStorage.getItem('activeCycleId') || null
+  );
   
   const [authUser, setAuthUser] = useState<AuthUser>(null);
-  const { firebaseUser, loading } = useAuth();
-  const [isAppLoading, setIsAppLoading] = useState(true);
+  const { firebaseUser, loading: authLoading } = useAuth();
+  const [cyclesLoaded, setCyclesLoaded] = useState(false);
+  const [usersLoaded, setUsersLoaded] = useState(false);
+  const [isResolvingUser, setIsResolvingUser] = useState(true);
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (localStorage.getItem('theme') === 'dark') {
@@ -41,8 +44,14 @@ const AppContent: React.FC = () => {
   
   // Set up real-time listeners for Firestore data
   useEffect(() => {
-    const unsubscribeCycles = db.onCyclesUpdate(setRoscaCycles);
-    const unsubscribeUsers = db.onUsersUpdate(setAllUsers);
+    const unsubscribeCycles = db.onCyclesUpdate(cycles => {
+        setRoscaCycles(cycles);
+        setCyclesLoaded(true);
+    });
+    const unsubscribeUsers = db.onUsersUpdate(users => {
+        setAllUsers(users);
+        setUsersLoaded(true);
+    });
 
     return () => {
       unsubscribeCycles();
@@ -50,13 +59,30 @@ const AppContent: React.FC = () => {
     };
   }, []);
 
-  // Set initial active cycle
+  // Persist active cycle ID to local storage
   useEffect(() => {
-    if (roscaCycles.length > 0 && !activeCycleId) {
-      const activeCycles = roscaCycles.filter(c => !c.isArchived);
-      setActiveCycleId(activeCycles[0]?.id ?? roscaCycles[0]?.id ?? null);
+    if (activeCycleId) {
+      localStorage.setItem('activeCycleId', activeCycleId);
+    } else {
+      localStorage.removeItem('activeCycleId');
     }
-  }, [roscaCycles, activeCycleId]);
+  }, [activeCycleId]);
+
+  // Set initial or fallback active cycle
+  useEffect(() => {
+    if (!cyclesLoaded) return;
+    
+    if (roscaCycles.length > 0) {
+      const cycleExists = roscaCycles.some(c => c.id === activeCycleId);
+      if (!cycleExists) {
+        const firstActiveCycle = roscaCycles.find(c => !c.isArchived);
+        setActiveCycleId(firstActiveCycle?.id ?? roscaCycles[0]?.id ?? null);
+      }
+    } else if (roscaCycles.length === 0 && activeCycleId !== null) {
+      setActiveCycleId(null);
+    }
+  }, [roscaCycles, cyclesLoaded, activeCycleId]);
+
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -67,64 +93,82 @@ const AppContent: React.FC = () => {
       localStorage.setItem('theme', 'light');
     }
   }, [theme]);
-
+  
   useEffect(() => {
-    if (!loading) {
-      if (firebaseUser && firebaseUser.email) {
-        if (firebaseUser.email === ADMIN_EMAIL) {
-          setAuthUser({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            name: 'Administrator',
-            role: 'admin',
-          });
-        } else {
-          const appUser = allUsers.find(u => u.uid === firebaseUser.uid);
-          
-          if (appUser) {
-            if (appUser.cycleId) {
-                const cycle = roscaCycles.find(c => c.id === appUser.cycleId);
-                const member = cycle?.members.find(m => m.id === appUser.uid);
-                if (cycle && member) {
-                     setAuthUser({
-                        uid: firebaseUser.uid,
-                        email: firebaseUser.email,
-                        name: member.name,
-                        role: 'member',
-                        cycleId: cycle.id,
-                        memberId: member.id,
-                    });
-                } else {
-                  setAuthUser({
-                    uid: appUser.uid,
-                    email: appUser.email,
-                    name: appUser.name,
-                    role: 'member',
-                  });
-                }
-            } else {
-                setAuthUser({
-                    uid: appUser.uid,
-                    email: appUser.email,
-                    name: appUser.name,
-                    role: 'member',
-                });
-            }
-          } else {
-             setAuthUser({
-                uid: firebaseUser.uid,
-                email: firebaseUser.email,
-                name: firebaseUser.displayName || firebaseUser.email,
-                role: 'member',
-             });
-          }
-        }
-      } else {
-        setAuthUser(null);
-      }
-      setIsAppLoading(false);
+    // This effect resolves the application's user state (authUser) based on loaded data.
+    // It waits for auth, cycles, and users to be loaded before proceeding.
+    if (authLoading || !cyclesLoaded || !usersLoaded) {
+      setIsResolvingUser(true);
+      return;
     }
-  }, [firebaseUser, loading, roscaCycles, allUsers]);
+
+    // Case 1: No firebase user, so no authUser.
+    if (!firebaseUser) {
+      setAuthUser(null);
+      setIsResolvingUser(false);
+      return;
+    }
+
+    // Case 2: User is the admin.
+    if (firebaseUser.email === ADMIN_EMAIL) {
+      setAuthUser({
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        name: 'Administrator',
+        role: 'admin',
+      });
+      setIsResolvingUser(false);
+      return;
+    }
+
+    // Case 3: Handle regular members.
+    const appUser = allUsers.find(u => u.uid === firebaseUser.uid);
+    
+    // Member is authenticated but not yet in the `users` database collection.
+    if (!appUser) {
+        setAuthUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email!,
+            name: firebaseUser.displayName || firebaseUser.email!,
+            role: 'member',
+        });
+        setIsResolvingUser(false);
+        return;
+    }
+
+    // Member is in the database, but not assigned to a cycle.
+    if (!appUser.cycleId) {
+        setAuthUser({
+            uid: appUser.uid,
+            email: appUser.email,
+            name: appUser.name,
+            role: 'member',
+        });
+        setIsResolvingUser(false);
+        return;
+    }
+
+    // Member is assigned to a cycle. We need to verify data consistency.
+    const cycle = roscaCycles.find(c => c.id === appUser.cycleId);
+    const member = cycle?.members.find(m => m.id === appUser.uid);
+
+    if (cycle && member) {
+        // Data is consistent. Create the full authUser object.
+        setAuthUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email!,
+            name: member.name,
+            role: 'member',
+            cycleId: cycle.id,
+            memberId: member.id,
+        });
+        setIsResolvingUser(false);
+    } else {
+        // Data is inconsistent (e.g., user has a cycleId, but the cycle/member data isn't loaded yet or is invalid).
+        // We keep `isResolvingUser` true, showing the loader until a Firestore update provides consistent data.
+        setIsResolvingUser(true);
+    }
+  }, [firebaseUser, authLoading, roscaCycles, allUsers, cyclesLoaded, usersLoaded]);
 
 
   const toggleTheme = () => {
@@ -224,7 +268,8 @@ const AppContent: React.FC = () => {
     if (!currentMonthObject || currentMonthIndex >= cycle.months.length) return;
 
     const paidOutMemberIds = new Set(cycle.months.filter(m => m.payoutMemberId).map(m => m.payoutMemberId!));
-    const eligibleMembers = cycle.members.filter(m => !paidOutMemberIds.has(m.id));
+    // FIX: Explicitly type 'm' as 'Member' to resolve a potential TypeScript inference error where 'm' is treated as 'unknown'.
+    const eligibleMembers = cycle.members.filter((m: Member) => !paidOutMemberIds.has(m.id));
     let recipientIdForCurrentMonth: string | null = null;
 
     if (eligibleMembers.length > 0) {
@@ -414,11 +459,17 @@ const AppContent: React.FC = () => {
         alert('A user with this UID already exists.'); return;
     }
     const newUser: AppUser = { uid, name, email };
-    await db.addUser(newUser);
+    try {
+      await db.addUser(newUser);
+    } catch (error) {
+      console.error("Error adding user to database:", error);
+      alert("Failed to add user to the database. The user's login may have been created, but their details are not saved. Please try again or contact support.");
+    }
   }, [allUsers]);
 
   const handleEditUser = useCallback(async (uid: string, name: string, email: string) => {
-      const cyclesToUpdate = roscaCycles.filter(c => c.members.some(m => m.id === uid));
+      // FIX: Explicitly type 'm' as 'Member' to resolve TypeScript inference error.
+      const cyclesToUpdate = roscaCycles.filter(c => c.members.some((m: Member) => m.id === uid));
       try {
           await db.updateUserAndCycles(uid, { name, email }, cyclesToUpdate);
       } catch (error) {
@@ -433,8 +484,25 @@ const AppContent: React.FC = () => {
         alert("Cannot delete a user who is assigned to a cycle. Please remove them from the cycle first.");
         return;
     }
-    await db.deleteUser(uid);
+    try {
+      await db.deleteUser(uid);
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      alert("Failed to delete user.");
+    }
   }, [allUsers]);
+  
+  const handleImportData = useCallback(async (data: { cycles: RoscaCycle[], users: AppUser[] }) => {
+    try {
+        await db.importData(data);
+        alert("Data imported successfully! The application will now reflect the new data.");
+    } catch (error) {
+        console.error("Error importing data: ", error);
+        alert(`Failed to import data. Error: ${(error as Error).message}`);
+    }
+  }, []);
+
+  const isAppLoading = authLoading || !cyclesLoaded || !usersLoaded || isResolvingUser;
 
   if (isAppLoading) {
     return (
@@ -470,6 +538,7 @@ const AppContent: React.FC = () => {
         onAddUser={handleAddUser}
         onEditUser={handleEditUser}
         onDeleteUser={handleDeleteUser}
+        onImportData={handleImportData}
         theme={theme}
         onToggleTheme={toggleTheme}
       />

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { RoscaCycle } from '../types';
 import { TrashIcon, PencilIcon, UserPlusIcon, ArchiveIcon, LogOutIcon, SunIcon, MoonIcon, ShieldCheckIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from './Icons';
-import { ConfirmRemovalModal } from './ConfirmRemovalModal';
+import { ConfirmModal } from './ConfirmRemovalModal';
 import { useAuth } from '../context/AuthContext';
 
 interface CycleSelectorProps {
@@ -220,13 +220,14 @@ export const CycleSelector: React.FC<CycleSelectorProps> = ({
         </div>
       </aside>
       {isDeleteModalOpen && cycleToDelete && (
-        <ConfirmRemovalModal
+        <ConfirmModal
           isOpen={isDeleteModalOpen}
           title="Delete Trust Circle"
           message={<>Are you sure you want to delete the circle <span className="font-bold">{cycleToDelete.name}</span>? This action cannot be undone.</>}
           onClose={handleCloseDeleteModal}
           onConfirm={handleConfirmDelete}
           confirmButtonText="Delete Circle"
+          variant="danger"
         />
       )}
     </>

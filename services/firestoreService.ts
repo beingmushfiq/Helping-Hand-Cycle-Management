@@ -1,15 +1,5 @@
 import { db } from '../firebaseConfig';
-import {
-  collection,
-  doc,
-  addDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  writeBatch,
-  query,
-} from 'firebase/firestore';
+// FIX: Remove all v9 modular imports. The db instance from firebaseConfig is now a v8 instance.
 import { RoscaCycle, AppUser } from '../types';
 
 const CYCLES_COLLECTION = 'cycles';
@@ -17,24 +7,30 @@ const USERS_COLLECTION = 'users';
 
 // Real-time Listeners
 export const onCyclesUpdate = (callback: (cycles: RoscaCycle[]) => void) => {
-  const q = query(collection(db, CYCLES_COLLECTION));
-  return onSnapshot(q, (querySnapshot) => {
+  // FIX: Use v8 syntax for collection and onSnapshot.
+  const q = db.collection(CYCLES_COLLECTION);
+  return q.onSnapshot((querySnapshot) => {
     const cycles = querySnapshot.docs.map(doc => {
       const data = doc.data();
-      // Manually reconstruct the object to ensure it's plain and serializable.
-      // This prevents circular reference errors when state derived from this data
-      // is used with JSON.stringify or sent back to Firestore.
-      const plainData = {
-          ...data,
-          id: doc.id,
-          // Deep copy nested arrays of objects to ensure they are plain.
-          members: data.members ? data.members.map((m: any) => ({...m})) : [],
-          months: data.months ? data.months.map((month: any) => ({
-              ...month,
-              contributions: month.contributions ? month.contributions.map((c: any) => ({...c})) : []
-          })) : [],
+      // Manually construct a plain object to prevent circular reference errors.
+      // Spreading doc.data() can carry over Firestore-specific properties.
+      const plainData: RoscaCycle = {
+        id: doc.id,
+        name: data.name,
+        members: data.members ? data.members.map((m: any) => ({...m})) : [],
+        monthlyContributionAmount: data.monthlyContributionAmount,
+        currentMonth: data.currentMonth,
+        months: data.months ? data.months.map((month: any) => ({
+            ...month,
+            contributions: month.contributions ? month.contributions.map((c: any) => ({...c})) : []
+        })) : [],
+        ruleType: data.ruleType,
+        joiningFee: data.joiningFee,
+        cycleLength: data.cycleLength,
+        isArchived: data.isArchived,
+        savingsFund: data.savingsFund,
       };
-      return plainData as RoscaCycle;
+      return plainData;
     });
     callback(cycles);
   }, (error) => {
@@ -43,8 +39,9 @@ export const onCyclesUpdate = (callback: (cycles: RoscaCycle[]) => void) => {
 };
 
 export const onUsersUpdate = (callback: (users: AppUser[]) => void) => {
-  const q = query(collection(db, USERS_COLLECTION));
-  return onSnapshot(q, (querySnapshot) => {
+  // FIX: Use v8 syntax for collection and onSnapshot.
+  const q = db.collection(USERS_COLLECTION);
+  return q.onSnapshot((querySnapshot) => {
     // Spreading the user data is sufficient as the AppUser object is flat.
     const users = querySnapshot.docs.map(doc => ({ ...(doc.data() as AppUser) }));
     callback(users);
@@ -55,34 +52,38 @@ export const onUsersUpdate = (callback: (users: AppUser[]) => void) => {
 
 // Cycle Management
 export const updateCycle = async (cycleId: string, updatedCycleData: RoscaCycle) => {
-    const cycleRef = doc(db, CYCLES_COLLECTION, cycleId);
+    // FIX: Use v8 syntax for doc and set.
+    const cycleRef = db.collection(CYCLES_COLLECTION).doc(cycleId);
     // Firestore doesn't like the 'id' field in the data object itself, so we remove it before saving
     const { id, ...dataToSave } = updatedCycleData; 
-    await setDoc(cycleRef, dataToSave);
+    await cycleRef.set(dataToSave);
 };
 
 // User Management
 export const addUser = async (userData: AppUser) => {
+    // FIX: Use v8 syntax for doc and set.
     // Use uid as the document ID for easy lookup
-    await setDoc(doc(db, USERS_COLLECTION, userData.uid), userData);
+    await db.collection(USERS_COLLECTION).doc(userData.uid).set(userData);
 };
 
 export const deleteUser = async (uid: string) => {
-    await deleteDoc(doc(db, USERS_COLLECTION, uid));
+    // FIX: Use v8 syntax for doc and delete.
+    await db.collection(USERS_COLLECTION).doc(uid).delete();
 };
 
 
 // Batch operations for ensuring data consistency
 export const createCycleAndUpdateUsers = async (cycleData: Omit<RoscaCycle, 'id'>, userIds: string[]) => {
-    const batch = writeBatch(db);
+    // FIX: Use v8 syntax for batch operations.
+    const batch = db.batch();
     
     // 1. Create a new document reference for the cycle to get its ID
-    const newCycleRef = doc(collection(db, CYCLES_COLLECTION));
+    const newCycleRef = db.collection(CYCLES_COLLECTION).doc();
     batch.set(newCycleRef, cycleData);
 
     // 2. Update all selected users to assign them to the new cycle
     userIds.forEach(uid => {
-        const userRef = doc(db, USERS_COLLECTION, uid);
+        const userRef = db.collection(USERS_COLLECTION).doc(uid);
         batch.update(userRef, { cycleId: newCycleRef.id });
     });
 
@@ -91,15 +92,16 @@ export const createCycleAndUpdateUsers = async (cycleData: Omit<RoscaCycle, 'id'
 };
 
 export const deleteCycleAndUnassignUsers = async (cycleId: string, userIds: string[]) => {
-    const batch = writeBatch(db);
+    // FIX: Use v8 syntax for batch operations.
+    const batch = db.batch();
 
     // 1. Delete the cycle document
-    const cycleRef = doc(db, CYCLES_COLLECTION, cycleId);
+    const cycleRef = db.collection(CYCLES_COLLECTION).doc(cycleId);
     batch.delete(cycleRef);
 
     // 2. Unassign all users from the deleted cycle
     userIds.forEach(uid => {
-        const userRef = doc(db, USERS_COLLECTION, uid);
+        const userRef = db.collection(USERS_COLLECTION).doc(uid);
         batch.update(userRef, { cycleId: undefined });
     });
 
@@ -107,31 +109,33 @@ export const deleteCycleAndUnassignUsers = async (cycleId: string, userIds: stri
 };
 
 export const removeMemberFromCycleAndUpdateUser = async (cycleId: string, updatedCycle: RoscaCycle, memberIdToRemove: string) => {
-    const batch = writeBatch(db);
+    // FIX: Use v8 syntax for batch operations.
+    const batch = db.batch();
 
     // 1. Update the cycle with the member removed
-    const cycleRef = doc(db, CYCLES_COLLECTION, cycleId);
+    const cycleRef = db.collection(CYCLES_COLLECTION).doc(cycleId);
     const { id, ...dataToSave } = updatedCycle;
     batch.set(cycleRef, dataToSave);
     
     // 2. Unassign the user from the cycle
-    const userRef = doc(db, USERS_COLLECTION, memberIdToRemove);
+    const userRef = db.collection(USERS_COLLECTION).doc(memberIdToRemove);
     batch.update(userRef, { cycleId: undefined });
 
     await batch.commit();
 };
 
 export const addMembersToCycleAndUpdateUsers = async (cycleId: string, updatedCycle: RoscaCycle, newUserIds: string[]) => {
-    const batch = writeBatch(db);
+    // FIX: Use v8 syntax for batch operations.
+    const batch = db.batch();
     
     // 1. Update the cycle with the new members
-    const cycleRef = doc(db, CYCLES_COLLECTION, cycleId);
+    const cycleRef = db.collection(CYCLES_COLLECTION).doc(cycleId);
     const { id, ...dataToSave } = updatedCycle;
     batch.set(cycleRef, dataToSave);
 
     // 2. Assign the new users to this cycle
     newUserIds.forEach(uid => {
-        const userRef = doc(db, USERS_COLLECTION, uid);
+        const userRef = db.collection(USERS_COLLECTION).doc(uid);
         batch.update(userRef, { cycleId: cycleId });
     });
 
@@ -139,10 +143,11 @@ export const addMembersToCycleAndUpdateUsers = async (cycleId: string, updatedCy
 };
 
 export const updateUserAndCycles = async (uid: string, updatedUserData: Partial<AppUser>, cyclesToUpdate: RoscaCycle[]) => {
-    const batch = writeBatch(db);
+    // FIX: Use v8 syntax for batch operations.
+    const batch = db.batch();
 
     // 1. Update the user document
-    const userRef = doc(db, USERS_COLLECTION, uid);
+    const userRef = db.collection(USERS_COLLECTION).doc(uid);
     batch.update(userRef, updatedUserData);
 
     // 2. Update the member details in each cycle the user belongs to
@@ -150,8 +155,42 @@ export const updateUserAndCycles = async (uid: string, updatedUserData: Partial<
         const updatedMembers = cycle.members.map(member => 
             member.id === uid ? { ...member, ...updatedUserData } : member
         );
-        const cycleRef = doc(db, CYCLES_COLLECTION, cycle.id);
+        const cycleRef = db.collection(CYCLES_COLLECTION).doc(cycle.id);
         batch.update(cycleRef, { members: updatedMembers });
+    });
+
+    await batch.commit();
+};
+
+export const importData = async (data: { cycles: RoscaCycle[], users: AppUser[] }) => {
+    if (!data.cycles || !data.users) {
+        throw new Error("Invalid data format. 'cycles' and 'users' arrays are required.");
+    }
+
+    // FIX: Use v8 syntax for batch and query operations.
+    const batch = db.batch();
+
+    const cyclesQuery = db.collection(CYCLES_COLLECTION);
+    const cyclesSnapshot = await cyclesQuery.get();
+    cyclesSnapshot.forEach(doc => {
+        batch.delete(doc.ref);
+    });
+
+    const usersQuery = db.collection(USERS_COLLECTION);
+    const usersSnapshot = await usersQuery.get();
+    usersSnapshot.forEach(doc => {
+        batch.delete(doc.ref);
+    });
+
+    data.cycles.forEach(cycle => {
+        const { id, ...cycleData } = cycle;
+        const cycleRef = db.collection(CYCLES_COLLECTION).doc(id);
+        batch.set(cycleRef, cycleData);
+    });
+
+    data.users.forEach(user => {
+        const userRef = db.collection(USERS_COLLECTION).doc(user.uid);
+        batch.set(userRef, user);
     });
 
     await batch.commit();

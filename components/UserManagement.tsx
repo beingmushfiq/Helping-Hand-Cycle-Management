@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { AppUser, RoscaCycle } from '../types';
 import { AddUserModal } from './AddUserModal';
 import { EditUserModal } from './EditUserModal';
-import { ConfirmRemovalModal } from './ConfirmRemovalModal';
+// FIX: Correctly import `ConfirmModal` instead of the non-existent `ConfirmRemovalModal`.
+import { ConfirmModal } from './ConfirmRemovalModal';
 import { UserPlusIcon, PencilIcon, TrashIcon, SearchIcon } from './Icons';
 
 interface UserManagementProps {
@@ -145,7 +146,8 @@ export const UserManagement: React.FC<UserManagementProps> = ({ allUsers, cycles
         />
       )}
       {isDeleteModalOpen && selectedUser && (
-        <ConfirmRemovalModal
+        // FIX: Use the correctly imported component `ConfirmModal`.
+        <ConfirmModal
           isOpen={isDeleteModalOpen}
           title="Delete User"
           message={<>Are you sure you want to delete <span className="font-bold">{selectedUser.name}</span>? This action cannot be undone.</>}

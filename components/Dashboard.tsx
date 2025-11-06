@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RoscaCycle, RoscaMonth, RuleType, PaymentStatus, Member, AppUser } from '../types';
 import { MonthDetail } from './MonthDetail';
 import { EditMemberModal } from './EditMemberModal';
-import { ConfirmRemovalModal } from './ConfirmRemovalModal';
+import { ConfirmModal } from './ConfirmRemovalModal';
 import { CycleCompletionSummary } from './CycleCompletionSummary';
 import { PaymentHistoryModal } from './PaymentHistoryModal';
 import { AddMemberModal } from './AddMemberModal';
@@ -430,13 +430,14 @@ const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
       {isRemoveModalOpen && memberToRemove && (
-        <ConfirmRemovalModal
+        <ConfirmModal
           isOpen={isRemoveModalOpen}
           title="Confirm Removal"
           message={<>Are you sure you want to remove <span className="font-bold">{memberToRemove.name}</span> from the cycle? This will make them available to join other cycles.</>}
           onClose={handleCloseRemoveModal}
           onConfirm={handleConfirmRemove}
           confirmButtonText="Remove Member"
+          variant="danger"
         />
       )}
       {isHistoryModalOpen && memberForHistory && (

@@ -1,6 +1,8 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+// FIX: Refactor to Firebase v8 namespaced API to resolve module import errors.
+// Corrected: Use compat imports for Firebase v8 API compatibility.
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 
 // TODO: Replace with your app's Firebase project configuration
 // See: https://firebase.google.com/docs/web/setup#available-libraries
@@ -15,10 +17,24 @@ export const firebaseConfig = {
   measurementId: "G-HTR2VWKK5M"
 };
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
 // Initialize Firebase Authentication and get a reference to the service
-export const auth = getAuth(app);
+export const auth = firebase.auth();
 
 // Initialize Cloud Firestore and get a reference to the service
-export const db = getFirestore(app);
+export const db = firebase.firestore();
+
+// Enable offline persistence for a more seamless user experience
+db.enablePersistence()
+  .catch((err) => {
+      if (err.code === 'failed-precondition') {
+          // This can happen if multiple tabs are open.
+          console.warn('Firestore persistence failed: Multiple tabs open.');
+      } else if (err.code === 'unimplemented') {
+          // The browser does not support all features required for persistence.
+          console.warn('Firestore persistence is not supported in this browser.');
+      }
+  });

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { initializeApp, deleteApp, FirebaseApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signOut, Auth } from 'firebase/auth';
+// FIX: Refactor to Firebase v8 namespaced API to resolve module import errors.
+// Corrected: Use compat imports for Firebase v8 API compatibility.
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
 import { firebaseConfig } from '../firebaseConfig';
 import { UserPlusIcon, EyeIcon, EyeOffIcon } from './Icons';
 
@@ -28,17 +30,22 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ onClose, onAddUser }
     }
     
     setLoading(true);
-    let tempApp: FirebaseApp | null = null;
+    // FIX: Use firebase.app.App type from v8 SDK.
+    let tempApp: firebase.app.App | null = null;
     
     try {
       const tempAppName = 'tempUserCreation_' + Date.now();
-      tempApp = initializeApp(firebaseConfig, tempAppName);
-      const tempAuth: Auth = getAuth(tempApp);
+      // FIX: Use the v8 namespaced API for initializeApp.
+      tempApp = firebase.initializeApp(firebaseConfig, tempAppName);
+      // FIX: Use the v8 namespaced API for getAuth and Auth type.
+      const tempAuth: firebase.auth.Auth = tempApp.auth();
       
-      const userCredential = await createUserWithEmailAndPassword(tempAuth, email.trim(), password);
-      const newUid = userCredential.user.uid;
+      // FIX: Use the v8 namespaced API for createUserWithEmailAndPassword.
+      const userCredential = await tempAuth.createUserWithEmailAndPassword(email.trim(), password);
+      const newUid = userCredential.user!.uid;
       
-      await signOut(tempAuth);
+      // FIX: Use the v8 namespaced API for signOut.
+      await tempAuth.signOut();
       
       onAddUser(newUid, name.trim(), email.trim());
       onClose();
@@ -56,7 +63,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ onClose, onAddUser }
       }
     } finally {
       if (tempApp) {
-        await deleteApp(tempApp);
+        // FIX: Use the v8 namespaced API for deleteApp.
+        await tempApp.delete();
       }
       setLoading(false);
     }

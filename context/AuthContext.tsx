@@ -1,15 +1,14 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { auth } from '../firebaseConfig';
-import { 
-  User, 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  signOut
-} from 'firebase/auth';
+// FIX: Refactor to Firebase v8 namespaced API to resolve module import errors.
+// Corrected: Use compat imports for Firebase v8 API compatibility.
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
 
 interface AuthContextType {
-  firebaseUser: User | null;
+  // FIX: Use firebase.User type from the v8 SDK.
+  firebaseUser: firebase.User | null;
   loading: boolean;
   error: string | null;
   login: (email: string, pass: string) => Promise<void>;
@@ -19,12 +18,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<firebase.User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    // FIX: Use the v8 namespaced API for onAuthStateChanged.
+    const unsubscribe = auth.onAuthStateChanged((user) => {
       setFirebaseUser(user);
       setLoading(false);
     });
@@ -39,7 +39,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setLoading(true);
     setError(null);
     try {
-      await signInWithEmailAndPassword(auth, email, pass);
+      // FIX: Use the v8 namespaced API for signInWithEmailAndPassword.
+      await auth.signInWithEmailAndPassword(email, pass);
     } catch (err) {
       handleAuthError(err);
     } finally {
@@ -49,7 +50,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = async () => {
     setError(null);
-    await signOut(auth);
+    // FIX: Use the v8 namespaced API for signOut.
+    await auth.signOut();
   };
 
   const value = useMemo(() => ({
