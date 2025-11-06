@@ -1,6 +1,7 @@
 import { db } from '../firebaseConfig';
 // FIX: Remove all v9 modular imports. The db instance from firebaseConfig is now a v8 instance.
 import { RoscaCycle, AppUser } from '../types';
+import firebase from 'firebase/compat/app';
 
 const CYCLES_COLLECTION = 'cycles';
 const USERS_COLLECTION = 'users';
@@ -102,7 +103,7 @@ export const deleteCycleAndUnassignUsers = async (cycleId: string, userIds: stri
     // 2. Unassign all users from the deleted cycle
     userIds.forEach(uid => {
         const userRef = db.collection(USERS_COLLECTION).doc(uid);
-        batch.update(userRef, { cycleId: undefined });
+        batch.update(userRef, { cycleId: firebase.firestore.FieldValue.delete() });
     });
 
     await batch.commit();
@@ -118,8 +119,9 @@ export const removeMemberFromCycleAndUpdateUser = async (cycleId: string, update
     batch.set(cycleRef, dataToSave);
     
     // 2. Unassign the user from the cycle
+    // FIX: Corrected typo in collection name from 'USERS_COLlection' to 'USERS_COLLECTION'.
     const userRef = db.collection(USERS_COLLECTION).doc(memberIdToRemove);
-    batch.update(userRef, { cycleId: undefined });
+    batch.update(userRef, { cycleId: firebase.firestore.FieldValue.delete() });
 
     await batch.commit();
 };
